@@ -1,10 +1,8 @@
 # Tally
 
-[![CI](https://github.com/<your-username>/tally/actions/workflows/ci.yml/badge.svg)](https://github.com/<your-username>/tally/actions/workflows/ci.yml)
-
 **Bank reconciliation engine for small businesses.** Tally reads a bank statement export and a list of open invoices and bills, and works out which payment settles which document. Confident matches are posted automatically; everything else goes to a review queue with the reasons and the alternatives.
 
-On a 1,921-transaction benchmark it auto-matches 64% of payments at **99.7% precision**, finds 82% overall, and runs in about a second.
+On held-out benchmark data (about 1,900 transactions per run) it auto-matches about 63% of payments at **99.4–100% precision**, finds about 82% overall, and runs in about a second.
 
 ## Why this is hard
 
@@ -45,7 +43,7 @@ flowchart LR
 
 **1. Parsing.** Every bank exports differently: title lines above the header, totals below, Hebrew or English headers, one signed column or separate debit/credit columns, UTF-8 or Windows-1255. A *profile* ([`profiles/`](src/tally/profiles)) describes a layout as data, so a new bank is a JSON file, not code. Transaction ids are content hashes, so importing the same statement twice yields the same ids, while two genuinely identical payments on one day stay distinct.
 
-**2. Candidates with blocking.** A payment must agree on direction and, within the fee tolerance, on amount. Entries are indexed by amount, so each transaction scores only a narrow band: about 6,300 pairs instead of 3.6 million on the benchmark.
+**2. Candidates with blocking.** A payment must agree on direction and, within the fee tolerance, on amount. Entries are indexed by amount, so each transaction scores only a narrow band: on the benchmark the engine evaluates about 27,000 pairs instead of 3.6 million, and keeps about 6,300 as candidates. (The later split and installment passes work per counterparty and are not blocked by amount.)
 
 **3. Scoring.** Each pair gets a weighted score from amount fit (exact, or short by a plausible fee), name similarity (prefix-aware, because banks truncate), and date fit (between issue date and due date, decaying outside). A quoted document number adds a strong bonus. Amount and date alone are penalized: that is a coincidence waiting to happen.
 
@@ -66,31 +64,31 @@ flowchart LR
 
 Real bank statements cannot be published, so [`synthetic.py`](src/tally/synthetic.py) generates realistic data with ground truth: six months of a small Israeli business with Hebrew and English counterparties, 18% VAT prices, monthly retainers, truncated and misspelled descriptions, fees, split payments, installments, unpaid invoices and unrelated bank lines (salaries, VAT, card charges, bank fees). The whole pipeline runs end to end, including writing and re-parsing the bank file.
 
-Seed 7 (1,921 transactions, 1,859 open entries, 1,568 true links):
+The matching rules were developed while looking at seeds 7, 11 and 42. Seeds 2026, 101 and 555 were run only after development, as a held-out check:
 
-| Metric | Value |
-| --- | --- |
-| Auto-match precision | **99.7%** (1,009 of 1,012) |
-| Auto-match recall | 64.3% of all true links |
-| Found (auto + review) | 81.9% |
-| Review: right entry among top 3 options | 78.9% |
-| Unrelated bank lines wrongly linked | 1 of 353 |
-| Runtime | about 1 second |
+| Seed | Auto-match precision | Auto-match recall | Found (auto + review) |
+| --- | ---: | ---: | ---: |
+| 2026 (held out) | 99.4% | 62.8% | 81.5% |
+| 101 (held out) | 99.5% | 62.9% | 82.2% |
+| 555 (held out) | 100.0% | 63.4% | 82.2% |
+| 7, 11, 42 (development) | 99.7–99.8% | 62.9–65.3% | 83.3–84.1% |
+
+Breakdown for held-out seed 2026 (1,904 transactions, 1,879 open entries, 1,558 true links):
 
 | Scenario | Links | Auto, correct | Review, correct | Wrong | Missed |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| clean | 928 | 739 | 116 | 66 | 7 |
-| reference quoted | 182 | 173 | 2 | 4 | 3 |
-| fee deducted | 101 | 72 | 22 | 6 | 1 |
-| split payment | 83 | 25 | 21 | 34 | 3 |
-| installments | 192 | 0 | 114 | 74 | 4 |
-| no payer in description | 82 | 0 | 0 | 2 | 80 |
+| clean | 877 | 716 | 121 | 38 | 2 |
+| reference quoted | 173 | 167 | 5 | 0 | 1 |
+| fee deducted | 97 | 72 | 17 | 8 | 0 |
+| split payment | 96 | 24 | 36 | 33 | 3 |
+| installments | 238 | 0 | 111 | 121 | 6 |
+| no payer in description | 77 | 0 | 0 | 0 | 77 |
 
-Seeds 11 and 42 give 99.6% and 99.7% auto precision; see [`benchmarks/results.md`](benchmarks/results.md). CI fails if precision on seed 7 drops below 99%.
+Full reports: [`benchmarks/results.md`](benchmarks/results.md). CI fails if auto precision on seed 7 drops below 99%.
 
 What the numbers say:
-- Nearly all errors sit in the review queue, where a person checks them; only 3 automatic matches out of 1,012 are wrong.
-- Most review errors are genuinely ambiguous: same customer, same amount, overlapping dates. The right answer is usually one of the alternatives shown.
+- Automatic matches are almost always right: 6 wrong out of 985 on seed 2026.
+- The review queue is where the weakness is. Only about 60% of review suggestions are right as suggested (71–83% if you count the alternatives shown), and split payments and installments are the worst cases: most of the "Wrong" column. Same customer, same amount and overlapping dates are often genuinely ambiguous.
 - Transfers whose description names no payer are left unmatched on purpose.
 
 ## Usage
@@ -106,7 +104,7 @@ tally reconcile data/samples/statement.csv data/samples/open_items.csv --show-re
 tally generate data/generated --seed 7
 
 # reproduce the benchmark
-tally benchmark --seeds 7 11 42
+tally benchmark --seeds 7 11 42 2026 101 555
 ```
 
 ```text
@@ -155,7 +153,7 @@ src/tally/
   synthetic.py  data generator with ground truth
   evaluation.py precision/recall benchmark
   api.py, cli.py
-tests/          103 tests, including a property test of subset search against brute force
+tests/          112 tests, including 30 randomized cases checking subset search against brute force
 ```
 
 ## Engineering notes
@@ -167,9 +165,10 @@ tests/          103 tests, including a property test of subset search against br
 
 ## Limitations and next steps
 
-- Single currency (ILS); no FX matching yet.
+- Single currency (ILS): other currencies and credit notes are rejected at import, not matched.
 - Profiles cover two generic layouts; real exports from specific banks need their own profile files.
-- Scoring weights are set by hand and checked against the benchmark; learning them from labeled reviews (logistic regression) is the natural next step.
+- Scoring weights and thresholds are set by hand. Learning them from labeled review decisions (for example logistic regression) is the natural next step.
+- Review suggestions for split payments and installments are often wrong; better use of payment history (which invoices a customer usually pays together) would help most there.
 - Reviewer decisions are not persisted. A database (PostgreSQL) and a small review UI would close the loop.
 - Many-to-many cases (several transfers paying several invoices) are not handled.
 

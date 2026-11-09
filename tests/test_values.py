@@ -16,7 +16,7 @@ FORMATS = ["%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"]
         ("1,234.50-", Decimal("-1234.50")),
         ("₪ -80", Decimal("-80")),
         ('2,000 ש"ח', Decimal("2000")),
-        ("‏1,500.00‏", Decimal("1500.00")),
+        ("\u200f1,500.00\u200f", Decimal("1500.00")),
         (1500, Decimal("1500")),
         (12.1, Decimal("12.10")),
     ],
@@ -55,5 +55,5 @@ def test_bad_date_raises() -> None:
 
 
 def test_clean_text_strips_direction_marks_and_spaces() -> None:
-    assert clean_text("‏העברה   מ-גלבוע ‎") == "העברה מ-גלבוע"
+    assert clean_text("\u200fהעברה   מ-גלבוע \u200e") == "העברה מ-גלבוע"
     assert clean_text(260142.0) == "260142"

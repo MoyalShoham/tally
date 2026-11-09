@@ -9,6 +9,7 @@ Guardrails, by design:
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 from typing import Protocol
@@ -17,6 +18,7 @@ from pydantic import BaseModel, ValidationError
 
 from tally.models import BankTransaction, LedgerEntry
 
+logger = logging.getLogger(__name__)
 DEFAULT_MODEL = os.environ.get("TALLY_LLM_MODEL", "claude-haiku-5-5")
 
 
@@ -79,6 +81,7 @@ class ClaudeResolver:
         import anthropic  # optional dependency
 
         self._client = anthropic.Anthropic()
+        self._api_error = anthropic.APIError
         self._model = model
         self._calls_left = max_calls  # hard budget per reconciliation run
 
@@ -86,11 +89,18 @@ class ClaudeResolver:
         if self._calls_left <= 0:
             return None
         self._calls_left -= 1
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=200,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": build_prompt(txn, options)}],
-        )
+        try:
+            response = self._client.messages.create(
+                model=self._model,
+                max_tokens=200,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": build_prompt(txn, options)}],
+            )
+        except self._api_error as exc:
+            # The second opinion is optional: a network or API failure must never
+            # fail the reconciliation itself.
+            logger.warning("LLM resolver unavailable, skipping: %s", exc)
+            self._calls_left = 0
+            return None
         text = "".join(block.text for block in response.content if block.type == "text")
         return parse_answer(text, options)

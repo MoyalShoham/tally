@@ -15,8 +15,8 @@ def test_benchmark_quality_floor() -> None:
     m = run_benchmark(seed=7)  # also checks that the bank file round trip keeps ids
     assert m.transactions > 1800
     assert m.auto_precision >= 0.99
-    assert m.auto_recall >= 0.60
-    assert m.found_rate >= 0.80
+    assert m.auto_recall >= 0.62
+    assert m.found_rate >= 0.82
     assert m.noise_matched <= 5
     assert m.seconds < 10
 

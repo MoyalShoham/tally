@@ -113,7 +113,9 @@ class ReconciliationEngine:
         candidates = generate_candidates(list(state.open_txns.values()), list(entries.values()), cfg)
         by_txn: dict[str, list[Candidate]] = defaultdict(list)
         for c in candidates:
-            by_txn[c.transaction_id].append(c)
+            by_txn[c.transaction_id].append(c)  # all candidates count as rivals ...
+        # ... but only pairs good enough to report take part in the assignment.
+        candidates = [c for c in candidates if c.pair.score >= cfg.review_threshold]
 
         for a in assign(candidates):
             pair = a.candidate.pair

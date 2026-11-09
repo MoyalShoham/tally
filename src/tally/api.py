@@ -45,8 +45,8 @@ def _resolver() -> Resolver | None:
     return ClaudeResolver()
 
 
-async def _read(upload: UploadFile) -> bytes:
-    content = await upload.read(MAX_UPLOAD_BYTES + 1)
+def _read(upload: UploadFile) -> bytes:
+    content = upload.file.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(413, f"{upload.filename} is larger than 5 MB")
     return content
@@ -62,8 +62,10 @@ def profiles() -> list[ProfileInfo]:
     return [ProfileInfo(name=p.name, description=p.description) for p in builtin_profiles()]
 
 
+# A plain `def` endpoint: FastAPI runs it in a worker thread, so CPU-bound
+# matching and optional LLM calls do not block the event loop for other clients.
 @app.post("/reconcile", response_model=ReconcileResponse)
-async def reconcile(
+def reconcile(
     bank_file: UploadFile = File(..., description="Bank statement export (CSV or XLSX)"),
     ledger_file: UploadFile = File(..., description="Open invoices and bills (CSV or XLSX)"),
     profile: str = Form("hebrew_debit_credit", description="Bank export profile name"),
@@ -75,8 +77,8 @@ async def reconcile(
     except FileNotFoundError as exc:
         raise HTTPException(422, str(exc)) from exc
     try:
-        parsed = parse_bank_file(await _read(bank_file), bank_file.filename or "bank.csv", bank_profile)
-        entries = parse_ledger_file(await _read(ledger_file), ledger_file.filename or "ledger.csv")
+        parsed = parse_bank_file(_read(bank_file), bank_file.filename or "bank.csv", bank_profile)
+        entries = parse_ledger_file(_read(ledger_file), ledger_file.filename or "ledger.csv")
     except (BankFileError, LedgerFileError) as exc:
         raise HTTPException(422, str(exc)) from exc
 

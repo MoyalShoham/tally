@@ -9,10 +9,13 @@ import pandas as pd
 from pydantic import ValidationError
 
 from tally.models import EntryKind, LedgerEntry
+from tally.parsing.limits import EXCEL_SUFFIXES, check_grid, read_excel
 from tally.parsing.values import ValueParseError, clean_text, parse_amount, parse_date
 
 REQUIRED_COLUMNS = ("id", "kind", "number", "counterparty", "amount", "issue_date", "due_date")
 DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d.%m.%Y")
+ENCODINGS = ("utf-8-sig", "cp1255")
+SUPPORTED_CURRENCIES = {"ILS", "NIS", "₪"}
 _KIND_ALIASES = {
     "invoice": EntryKind.INVOICE,
     "receivable": EntryKind.INVOICE,
@@ -27,11 +30,28 @@ class LedgerFileError(ValueError):
     pass
 
 
+def _read_frame(content: bytes, filename: str) -> pd.DataFrame:
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".xls":
+        raise LedgerFileError("old .xls files are not supported; save the file as .xlsx or .csv")
+    try:
+        if suffix in EXCEL_SUFFIXES:
+            return read_excel(content, header=0)
+        for encoding in ENCODINGS:
+            try:
+                text = content.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+            frame = pd.read_csv(io.StringIO(text), dtype=str, keep_default_na=False)
+            check_grid(*frame.shape)
+            return frame
+    except (ValueError, pd.errors.ParserError) as exc:
+        raise LedgerFileError(str(exc)) from exc
+    raise LedgerFileError(f"could not decode {filename} as {' or '.join(ENCODINGS)}")
+
+
 def parse_ledger_file(content: bytes, filename: str) -> list[LedgerEntry]:
-    if Path(filename).suffix.lower() in {".xlsx", ".xlsm", ".xls"}:
-        frame = pd.read_excel(io.BytesIO(content), dtype=object)
-    else:
-        frame = pd.read_csv(io.BytesIO(content), dtype=str, keep_default_na=False, encoding="utf-8-sig")
+    frame = _read_frame(content, filename)
     frame.columns = [str(c).strip().lower() for c in frame.columns]
     missing = [c for c in REQUIRED_COLUMNS if c not in frame.columns]
     if missing:
@@ -46,16 +66,23 @@ def parse_ledger_file(content: bytes, filename: str) -> list[LedgerEntry]:
             due = parse_date(record["due_date"], DATE_FORMATS)
             if amount is None or issue is None or due is None:
                 raise LedgerFileError(f"line {position}: amount and dates are required")
+            if amount <= 0:
+                raise LedgerFileError(
+                    f"line {position}: amount must be positive (credit notes are not supported yet)"
+                )
+            currency = (clean_text(record.get("currency")) or "ILS").upper()
+            if currency not in SUPPORTED_CURRENCIES:
+                raise LedgerFileError(f"line {position}: only ILS entries are supported, got {currency}")
             entries.append(
                 LedgerEntry(
                     id=clean_text(record["id"]),
                     kind=kind,
                     number=clean_text(record["number"]),
                     counterparty=clean_text(record["counterparty"]),
-                    amount=abs(amount),
+                    amount=amount,
                     issue_date=issue,
                     due_date=due,
-                    currency=clean_text(record.get("currency")) or "ILS",
+                    currency="ILS",
                 )
             )
         except KeyError as exc:

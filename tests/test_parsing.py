@@ -133,3 +133,38 @@ def test_ledger_rejects_unknown_kind() -> None:
     bad = LEDGER.replace("bill,", "credit_note,")
     with pytest.raises(LedgerFileError, match="unknown kind"):
         parse_ledger_file(bad.encode(), "x.csv")
+
+
+def test_ambiguous_number_formats_are_rejected_not_guessed() -> None:
+    from tally.parsing.values import ValueParseError, parse_amount
+
+    for raw in ("1.234,50", "12,50", "Infinity"):
+        with pytest.raises(ValueParseError):
+            parse_amount(raw)
+
+
+def test_very_wide_csv_is_rejected_before_padding() -> None:
+    wide = ("," * 10_000 + "\n" + "a\n" * 1000).encode()
+    with pytest.raises(BankFileError, match="columns"):
+        parse_bank_file(wide, "s.csv", load_profile("hebrew_debit_credit"))
+
+
+def test_corrupt_xlsx_and_old_xls_give_clear_errors() -> None:
+    profile = load_profile("hebrew_debit_credit")
+    with pytest.raises(BankFileError, match="xlsx"):
+        parse_bank_file(b"not a zip", "s.xlsx", profile)
+    with pytest.raises(BankFileError, match=r"old \.xls"):
+        parse_bank_file(b"whatever", "s.xls", profile)
+
+
+def test_ledger_in_windows_hebrew_encoding() -> None:
+    entries = parse_ledger_file(LEDGER.encode("cp1255"), "open_items.csv")
+    assert entries[1].counterparty == "תקשורת פלוס"
+
+
+def test_ledger_rejects_foreign_currency_and_credit_notes() -> None:
+    usd = LEDGER.replace("due_date\n", "due_date,currency\n").replace("2026-03-03\n", "2026-03-03,USD\n")
+    with pytest.raises(LedgerFileError, match="only ILS"):
+        parse_ledger_file(usd.encode(), "x.csv")
+    with pytest.raises(LedgerFileError, match="positive"):
+        parse_ledger_file(LEDGER.replace("1770.00", "-1770.00").encode(), "x.csv")

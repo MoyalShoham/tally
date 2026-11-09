@@ -71,3 +71,10 @@ def test_assignment_reports_runner_up_and_alternatives() -> None:
 def test_independent_components_are_solved_separately() -> None:
     result = assign([_cand("T1", "E1", 0.9), _cand("T2", "E2", 0.9), _cand("T3", "E3", 0.9)])
     assert len(result) == 3
+
+
+def test_one_strong_pair_beats_two_weak_ones() -> None:
+    # T1-E1 (0.95) must win over T1-E2 + T2-E1 (0.45 + 0.45 = 0.90).
+    candidates = [_cand("T1", "E1", 0.95), _cand("T1", "E2", 0.45), _cand("T2", "E1", 0.45)]
+    chosen = {(a.candidate.transaction_id, a.candidate.entry_id) for a in assign(candidates)}
+    assert chosen == {("T1", "E1")}

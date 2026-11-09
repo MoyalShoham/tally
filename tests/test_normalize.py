@@ -57,3 +57,16 @@ def test_reference_hit() -> None:
     assert reference_hit("payment 20260142", "INV-0142") is False  # 4 digits need an exact hit
     assert not reference_hit("pay 1234", "INV-260142")
     assert not reference_hit("pay 260142", "INV-12")
+
+
+def test_company_name_that_looks_like_boilerplate_survives() -> None:
+    assert name_similarity("TRANSFER FROM WIRE WORKS", "Wire Works Ltd") >= 0.9
+
+
+def test_one_word_name_does_not_match_a_longer_company() -> None:
+    assert name_similarity("העברה מ-כרמל תעשיות מתכת", 'כרמל בע"מ') < 0.75
+
+
+def test_two_quoted_invoices_are_both_found() -> None:
+    assert reference_hit("pay 260142-260143", "INV-260142")
+    assert reference_hit("pay 260142-260143", "INV-260143")

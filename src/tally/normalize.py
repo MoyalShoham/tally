@@ -21,13 +21,16 @@ _LEGAL_SUFFIXES = re.compile(
     r"\b(בע\"מ|בעמ|בע מ|ע\"ר|ער|שותפות מוגבלת|ltd|limited|inc|llc|co|corp|gmbh)\b\.?"
 )
 
-# Boilerplate the bank adds around the counterparty name.
-_BANK_BOILERPLATE = re.compile(
-    r"\b(העברה בנקאית|העברה מ|העברה ל|העב' מ|העב' ל|העב מ|העב ל|העברה|העב'|"
-    r"זיכוי מס\"ב|זיכוי|חיוב מס\"ב|חיוב|מס\"ב|תשלום ל|תשלום מ|תשלום|הוראת קבע|הו\"ק|"
-    r"transfer from|transfer to|transfer|payment from|payment to|payment|"
-    r"wire|ach|credit|debit|ref|reference|inv|invoice|חשבונית|חש')\b"
+# Words the bank puts in front of the counterparty name. Only the leading phrase is
+# removed: "TRANSFER FROM WIRE WORKS" keeps the company name "wire works".
+_LEADING_BOILERPLATE = re.compile(
+    r"^\s*(?:העברה בנקאית|העברה מחשבון|העברה מ|העברה ל|העב' מ|העב' ל|העב מ|העב ל|העברה|העב'|"
+    r"זיכוי מס\"ב|חיוב מס\"ב|זיכוי|חיוב|מס\"ב|תשלום ל|תשלום מ|תשלום|הוראת קבע|הו\"ק|"
+    r"transfer from|transfer to|transfer|payment from|payment to|payment|wire|ach|credit|debit)"
+    r"(?=\W|$)[\s\-:]*"
 )
+# Labels that introduce a reference number, anywhere in the text.
+_REFERENCE_LABELS = re.compile(r"(?<!\w)(?:ref|reference|inv|invoice|חשבונית|חש')(?=\W|$)")
 _NON_WORD = re.compile(r"[^\w\s]")
 _DIGIT_RUN = re.compile(r"\d{4,}")
 
@@ -51,13 +54,19 @@ def normalize_name(text: str) -> str:
 def normalize_description(text: str) -> str:
     """Canonical form of a bank description, with bank boilerplate removed."""
     text = _strip_marks(text).translate(_QUOTES).lower()
-    text = _BANK_BOILERPLATE.sub(" ", text)
+    text = _LEADING_BOILERPLATE.sub(" ", text, count=1)
+    text = _REFERENCE_LABELS.sub(" ", text)
     return normalize_name(text)
 
 
 def reference_numbers(text: str) -> set[str]:
-    """Digit runs of 4+ characters, e.g. invoice numbers quoted in a transfer."""
-    return set(_DIGIT_RUN.findall(text.replace("-", "").replace("/", "")))
+    """Digit runs of 4+ characters, e.g. invoice numbers quoted in a transfer.
+
+    Runs are taken both as written ("260142-260143" quotes two invoices) and with
+    separators removed ("2026-0142" is one document number).
+    """
+    joined = re.sub(r"(?<=\d)[-/](?=\d)", "", text)
+    return set(_DIGIT_RUN.findall(text)) | set(_DIGIT_RUN.findall(joined))
 
 
 def document_digits(number: str) -> str:
@@ -91,8 +100,11 @@ def name_similarity(description: str, counterparty: str) -> float:
     name = normalize_name(counterparty)
     if not desc or not name:
         return 0.0
-    if set(name.split()) <= set(desc.split()):
-        return 1.0  # every word of the name is present, maybe with extra words around it
+    name_words = name.split()
+    if len(name_words) >= 2 and set(name_words) <= set(desc.split()):
+        # Every word of a multi-word name is present, maybe with extra words around it.
+        # (A one-word name like "כרמל" would match every "כרמל ..." company.)
+        return 1.0
     # Word order varies between systems; compare sorted words.
     score = fuzz.token_sort_ratio(desc, name) / 100
     if 6 <= len(desc) < len(name):

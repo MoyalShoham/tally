@@ -29,4 +29,4 @@ jobs:
         run: pytest -q
       - name: Benchmark
         if: matrix.python-version == '3.13'
-        run: tally benchmark --seeds 7 11 42 --out benchmark.md && cat benchmark.md >> "$GITHUB_STEP_SUMMARY"
+        run: tally benchmark --seeds 7 11 42 2026 101 555 --out benchmark.md && cat benchmark.md >> "$GITHUB_STEP_SUMMARY"

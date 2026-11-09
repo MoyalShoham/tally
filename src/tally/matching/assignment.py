@@ -19,7 +19,10 @@ from scipy.optimize import linear_sum_assignment
 
 from tally.matching.candidates import Candidate
 
-_MISSING = 1e6  # cost of a pair that is not a candidate
+# A pair that is not a candidate costs 0, like leaving both sides unmatched. A large
+# cost here would make the solver maximize the *number* of pairs first, so two weak
+# pairs could beat one strong one.
+_MISSING = 0.0
 
 
 @dataclass(frozen=True)

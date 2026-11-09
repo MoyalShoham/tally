@@ -14,6 +14,7 @@ from typing import Any
 import pandas as pd
 
 from tally.models import BankTransaction
+from tally.parsing.limits import EXCEL_SUFFIXES, FileTooLargeError, check_grid, read_excel
 from tally.parsing.profiles import BankProfile
 from tally.parsing.values import ValueParseError, clean_text, is_blank, parse_amount, parse_date
 
@@ -31,8 +32,13 @@ class ParseResult:
 def _read_grid(content: bytes, filename: str, profile: BankProfile) -> pd.DataFrame:
     """Read the raw grid with no header assumptions; header detection happens later."""
     suffix = Path(filename).suffix.lower()
-    if suffix in {".xlsx", ".xlsm", ".xls"}:
-        return pd.read_excel(io.BytesIO(content), header=None, dtype=object)
+    if suffix == ".xls":
+        raise BankFileError("old .xls files are not supported; save the file as .xlsx or .csv")
+    if suffix in EXCEL_SUFFIXES:
+        try:
+            return read_excel(content, header=None)
+        except ValueError as exc:
+            raise BankFileError(str(exc)) from exc
     for encoding in profile.encodings:
         try:
             text = content.decode(encoding)
@@ -44,8 +50,15 @@ def _read_grid(content: bytes, filename: str, profile: BankProfile) -> pd.DataFr
             dialect: type[csv.Dialect] | csv.Dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t|")
         except csv.Error:
             dialect = csv.excel
-        rows = list(csv.reader(io.StringIO(text), dialect))
-        width = max((len(r) for r in rows), default=0)
+        rows = []
+        width = 0
+        try:
+            for row in csv.reader(io.StringIO(text), dialect):
+                rows.append(row)
+                width = max(width, len(row))
+                check_grid(len(rows), width)  # fail before padding, not after
+        except (FileTooLargeError, csv.Error) as exc:
+            raise BankFileError(str(exc)) from exc
         return pd.DataFrame([r + [""] * (width - len(r)) for r in rows], dtype=object)
     raise BankFileError(f"could not decode {filename} with any of {profile.encodings}")
 

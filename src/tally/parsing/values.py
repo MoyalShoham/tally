@@ -6,11 +6,12 @@ import math
 import re
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 _EXCEL_EPOCH = date(1899, 12, 30)
-_CURRENCY_NOISE = re.compile(r"[₪$€\s‎‏‪-‮]|ILS|NIS|ש\"ח|ש״ח", re.IGNORECASE)
+_PLAIN_NUMBER = re.compile(r"(\d{1,3}(,\d{3})+|\d+)(\.\d+)?|\.\d+")
+_CURRENCY_NOISE = re.compile(r"[₪$€\s\u200e\u200f\u202a-\u202e]|ILS|NIS|ש\"ח|ש״ח", re.IGNORECASE)
 
 
 class ValueParseError(ValueError):
@@ -38,8 +39,12 @@ def parse_amount(value: Any) -> Decimal | None:
     if isinstance(value, int):
         return Decimal(value)
     if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueParseError(f"not an amount: {value!r}")
         return Decimal(str(value)).quantize(Decimal("0.01"))
     if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueParseError(f"not an amount: {value!r}")
         return value
 
     text = _CURRENCY_NOISE.sub("", str(value))
@@ -50,11 +55,11 @@ def parse_amount(value: Any) -> Decimal | None:
         negative, text = True, text[:-1]
     if text.startswith("-"):
         negative, text = not negative, text[1:]
-    text = text.replace(",", "")
-    try:
-        amount = Decimal(text)
-    except InvalidOperation as exc:
-        raise ValueParseError(f"not an amount: {value!r}") from exc
+    # Only '1,234.50' style is accepted. '1.234,50' or '12,50' would silently
+    # become a different number, so they are rejected instead of guessed.
+    if not _PLAIN_NUMBER.fullmatch(text):
+        raise ValueParseError(f"not an amount: {value!r}")
+    amount = Decimal(text.replace(",", ""))
     return -amount if negative else amount
 
 
@@ -85,4 +90,4 @@ def clean_text(value: Any) -> str:
     text = str(value)
     if isinstance(value, float) and value.is_integer():
         text = str(int(value))
-    return " ".join(text.replace("‏", "").replace("‎", "").split())
+    return " ".join(text.replace("\u200f", "").replace("\u200e", "").split())
