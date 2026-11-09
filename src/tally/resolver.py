@@ -27,9 +27,7 @@ class ResolverDecision:
 
 
 class Resolver(Protocol):
-    def resolve(
-        self, txn: BankTransaction, options: list[LedgerEntry]
-    ) -> ResolverDecision | None: ...
+    def resolve(self, txn: BankTransaction, options: list[LedgerEntry]) -> ResolverDecision | None: ...
 
 
 class _Answer(BaseModel):

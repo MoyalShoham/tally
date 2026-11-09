@@ -51,9 +51,7 @@ class PairScore:
     reasons: tuple[str, ...] = field(default_factory=tuple)
 
 
-def amount_fit(
-    paid: Decimal, expected: Decimal, cfg: ScoringConfig, incoming: bool = True
-) -> float | None:
+def amount_fit(paid: Decimal, expected: Decimal, cfg: ScoringConfig, incoming: bool = True) -> float | None:
     """1.0 for an exact match, lower inside the fee tolerance, None outside it."""
     gap = paid - expected
     if abs(gap) <= Decimal("0.01"):
@@ -116,6 +114,11 @@ def score_pair(txn: BankTransaction, entry: LedgerEntry, cfg: ScoringConfig) -> 
     if ref:
         reasons.insert(0, f"document number {entry.number} quoted in transfer")
     return PairScore(
-        score=round(score, 4), amount=a, name=n, date=round(d, 4), reference=ref,
-        amount_difference=paid - entry.amount, reasons=tuple(reasons),
+        score=round(score, 4),
+        amount=a,
+        name=n,
+        date=round(d, 4),
+        reference=ref,
+        amount_difference=paid - entry.amount,
+        reasons=tuple(reasons),
     )

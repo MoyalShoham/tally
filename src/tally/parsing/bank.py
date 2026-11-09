@@ -7,6 +7,7 @@ import hashlib
 import io
 from collections import Counter
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -40,9 +41,7 @@ def _read_grid(content: bytes, filename: str, profile: BankProfile) -> pd.DataFr
         # Exports often start with title lines that have fewer cells than the table,
         # which pandas' CSV reader rejects; read rows with csv and pad them instead.
         try:
-            dialect: type[csv.Dialect] | csv.Dialect = csv.Sniffer().sniff(
-                text[:4096], delimiters=",;\t|"
-            )
+            dialect: type[csv.Dialect] | csv.Dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t|")
         except csv.Error:
             dialect = csv.excel
         rows = list(csv.reader(io.StringIO(text), dialect))
@@ -71,16 +70,15 @@ def _find_header(grid: pd.DataFrame, profile: BankProfile) -> tuple[int, dict[st
         if "date" in mapping and "description" in mapping and has_amount:
             return row_index, mapping
     raise BankFileError(
-        f"no header row matching profile {profile.name!r} in the first "
-        f"{profile.header_search_rows} rows"
+        f"no header row matching profile {profile.name!r} in the first {profile.header_search_rows} rows"
     )
 
 
-def _row_amount(row: list[Any], mapping: dict[str, int]) -> Any:
+def _row_amount(row: list[Any], mapping: dict[str, int]) -> Decimal | None:
     if "amount" in mapping:
         return parse_amount(row[mapping["amount"]])
-    debit = parse_amount(row[mapping["debit"]]) or 0
-    credit = parse_amount(row[mapping["credit"]]) or 0
+    debit = parse_amount(row[mapping["debit"]]) or Decimal(0)
+    credit = parse_amount(row[mapping["credit"]]) or Decimal(0)
     if debit == 0 and credit == 0:
         return None
     # Debit columns are written as positive numbers by most banks; money out is negative.
@@ -129,13 +127,16 @@ def parse_bank_file(content: bytes, filename: str, profile: BankProfile) -> Pars
                 balance = None
 
         fingerprint = f"{when.isoformat()}|{amount}|{description}|{reference}"
-        txn_id = transaction_id(when.isoformat(), str(amount), description, reference,
-                                seen[fingerprint])
+        txn_id = transaction_id(when.isoformat(), str(amount), description, reference, seen[fingerprint])
         seen[fingerprint] += 1
         result.transactions.append(
             BankTransaction(
-                id=txn_id, date=when, amount=amount, description=description,
-                reference=reference or None, balance=balance,
+                id=txn_id,
+                date=when,
+                amount=amount,
+                description=description,
+                reference=reference or None,
+                balance=balance,
             )
         )
 

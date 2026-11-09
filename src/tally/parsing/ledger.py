@@ -14,8 +14,12 @@ from tally.parsing.values import ValueParseError, clean_text, parse_amount, pars
 REQUIRED_COLUMNS = ("id", "kind", "number", "counterparty", "amount", "issue_date", "due_date")
 DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d.%m.%Y")
 _KIND_ALIASES = {
-    "invoice": EntryKind.INVOICE, "receivable": EntryKind.INVOICE, "ar": EntryKind.INVOICE,
-    "bill": EntryKind.BILL, "payable": EntryKind.BILL, "ap": EntryKind.BILL,
+    "invoice": EntryKind.INVOICE,
+    "receivable": EntryKind.INVOICE,
+    "ar": EntryKind.INVOICE,
+    "bill": EntryKind.BILL,
+    "payable": EntryKind.BILL,
+    "ap": EntryKind.BILL,
 }
 
 
@@ -27,8 +31,7 @@ def parse_ledger_file(content: bytes, filename: str) -> list[LedgerEntry]:
     if Path(filename).suffix.lower() in {".xlsx", ".xlsm", ".xls"}:
         frame = pd.read_excel(io.BytesIO(content), dtype=object)
     else:
-        frame = pd.read_csv(io.BytesIO(content), dtype=str, keep_default_na=False,
-                            encoding="utf-8-sig")
+        frame = pd.read_csv(io.BytesIO(content), dtype=str, keep_default_na=False, encoding="utf-8-sig")
     frame.columns = [str(c).strip().lower() for c in frame.columns]
     missing = [c for c in REQUIRED_COLUMNS if c not in frame.columns]
     if missing:
@@ -45,9 +48,13 @@ def parse_ledger_file(content: bytes, filename: str) -> list[LedgerEntry]:
                 raise LedgerFileError(f"line {position}: amount and dates are required")
             entries.append(
                 LedgerEntry(
-                    id=clean_text(record["id"]), kind=kind, number=clean_text(record["number"]),
-                    counterparty=clean_text(record["counterparty"]), amount=abs(amount),
-                    issue_date=issue, due_date=due,
+                    id=clean_text(record["id"]),
+                    kind=kind,
+                    number=clean_text(record["number"]),
+                    counterparty=clean_text(record["counterparty"]),
+                    amount=abs(amount),
+                    issue_date=issue,
+                    due_date=due,
                     currency=clean_text(record.get("currency")) or "ILS",
                 )
             )

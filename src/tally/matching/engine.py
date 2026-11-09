@@ -35,6 +35,8 @@ from tally.resolver import Resolver
 
 SAME_PARTY = 0.75  # name similarity needed to treat entries as one counterparty's
 SPLIT_AUTO_MAX_POOL = 12  # larger pools make coincidental sums too likely to auto-post
+TWIN_DATE_FIT = 0.4  # a same-amount twin competes only if the date also fits this well
+_PoolItem = tuple[LedgerEntry, float, bool]  # entry, name similarity, number quoted
 
 
 @dataclass
@@ -92,9 +94,14 @@ class ReconciliationEngine:
             numbers = ", ".join(sorted(entries[i].number for i in other_quoted))
             blockers.append(f"transfer quotes a different document ({numbers})")
         if not pair.reference:
-            # Same customer, same amount, another open entry: the bank line cannot
-            # tell them apart, whatever the dates say.
-            twins = [r for r in rivals if r.pair.amount == 1.0 and r.pair.name >= 0.9]
+            # Same customer, same amount, another open entry whose dates also fit: the
+            # bank line cannot tell them apart. A twin far outside its payment window
+            # (last month's rent) does not count, so recurring bills still auto-match.
+            twins = [
+                r
+                for r in rivals
+                if r.pair.amount == 1.0 and r.pair.name >= 0.9 and r.pair.date >= TWIN_DATE_FIT
+            ]
             if pair.amount == 1.0 and twins:
                 blockers.append("same counterparty has another open entry for this amount")
         return blockers
@@ -103,9 +110,7 @@ class ReconciliationEngine:
         cfg = self.cfg
         entries = dict(state.open_entries)
         documents = DocumentIndex(list(entries.values()))
-        candidates = generate_candidates(
-            list(state.open_txns.values()), list(entries.values()), cfg
-        )
+        candidates = generate_candidates(list(state.open_txns.values()), list(entries.values()), cfg)
         by_txn: dict[str, list[Candidate]] = defaultdict(list)
         for c in candidates:
             by_txn[c.transaction_id].append(c)
@@ -144,9 +149,7 @@ class ReconciliationEngine:
                 state.settled.add(a.candidate.entry_id)
 
     # Pass 2 ---------------------------------------------------------------
-    def _party_pool(
-        self, txn: BankTransaction, entries: list[LedgerEntry]
-    ) -> list[tuple[LedgerEntry, float, bool]]:
+    def _party_pool(self, txn: BankTransaction, entries: list[LedgerEntry]) -> list[_PoolItem]:
         pool = []
         for entry in entries:
             if not direction_matches(txn, entry) or date_fit(txn, entry, self.cfg) is None:
@@ -178,12 +181,16 @@ class ReconciliationEngine:
                 exact = False
                 tolerance = self.cfg.fee_tolerance(paid)
                 # Only a shortfall (fee deducted) is plausible, never an overpayment.
-                solutions = [s for s in find_subsets(amounts, paid, tolerance)
-                             if sum((amounts[i] for i in s), Decimal(0)) >= paid]
+                solutions = [
+                    s
+                    for s in find_subsets(amounts, paid, tolerance)
+                    if sum((amounts[i] for i in s), Decimal(0)) >= paid
+                ]
             if not solutions:
                 continue
 
-            def rank(solution: tuple[int, ...]) -> tuple[int, int]:
+            def rank(solution: tuple[int, ...], pool: list[_PoolItem] = pool) -> tuple[int, int]:
+                # Prefer combinations with quoted numbers, then the oldest entries.
                 refs = sum(pool[i][2] for i in solution)
                 age = sum(pool[i][0].due_date.toordinal() for i in solution) // len(solution)
                 return (-refs, age)
@@ -202,29 +209,40 @@ class ReconciliationEngine:
             chosen_ids = {e.id for e in chosen_entries}
             # A twin (same party, same amount) of a chosen entry may have been taken by
             # an earlier, unconfirmed match; then this combination is not really unique.
-            twin_doubt = not all_refs and any(
-                state.has_open_twin(i, chosen_ids) for i in chosen_ids)
+            twin_doubt = not all_refs and any(state.has_open_twin(i, chosen_ids) for i in chosen_ids)
             # With many open entries, a coincidental sum is likely; demand evidence.
             small_pool = len(pool) <= SPLIT_AUTO_MAX_POOL
-            auto = (unique and exact and not truncated and not quoted_elsewhere and not twin_doubt
-                    and (all_refs or small_pool) and confidence >= self.cfg.auto_threshold)
+            auto = (
+                unique
+                and exact
+                and not truncated
+                and not quoted_elsewhere
+                and not twin_doubt
+                and (all_refs or small_pool)
+                and confidence >= self.cfg.auto_threshold
+            )
             total = sum((e.amount for e in chosen_entries), Decimal(0))
-            alternatives = sorted({pool[i][0].id for s in solutions[1:] for i in s}
-                                  - {e.id for e in chosen_entries})
+            alternatives = sorted(
+                {pool[i][0].id for s in solutions[1:] for i in s} - {e.id for e in chosen_entries}
+            )
             reasons = [
                 f"{len(chosen_entries)} entries of the same counterparty sum to {total:.2f}",
-                "only combination that fits" if unique
+                "only combination that fits"
+                if unique
                 else f"{len(solutions)} combinations fit; chose oldest first",
             ]
             if not exact:
                 reasons.append(f"short by {total - paid:.2f}, likely a bank fee")
             state.matches.append(
                 Match(
-                    transaction_ids=[txn.id], entry_ids=[e.id for e in chosen_entries],
+                    transaction_ids=[txn.id],
+                    entry_ids=[e.id for e in chosen_entries],
                     kind=MatchKind.SPLIT,
                     status=MatchStatus.AUTO if auto else MatchStatus.REVIEW,
-                    confidence=round(min(confidence, 0.99), 4), reasons=reasons,
-                    amount_difference=paid - total, alternative_entry_ids=alternatives[:5],
+                    confidence=round(min(confidence, 0.99), 4),
+                    reasons=reasons,
+                    amount_difference=paid - total,
+                    alternative_entry_ids=alternatives[:5],
                 )
             )
             del state.open_txns[txn.id]
@@ -252,8 +270,9 @@ class ReconciliationEngine:
                 continue
             # Evidence order: quoted number, settles a started entry exactly, continues a
             # started entry, then the entry due closest to the payment date.
-            options.sort(key=lambda o: (not o[1], not o[2], not o[3],
-                                        abs((o[0].due_date - txn.date).days), o[0].id))
+            options.sort(
+                key=lambda o: (not o[1], not o[2], not o[3], abs((o[0].due_date - txn.date).days), o[0].id)
+            )
             entry, ref, final, started = options[0]
             due = state.outstanding.get(entry.id, entry.amount)
             state.outstanding[entry.id] = due - paid
@@ -261,10 +280,14 @@ class ReconciliationEngine:
             confidence -= 0.10 if len(options) > 1 else 0
             state.matches.append(
                 Match(
-                    transaction_ids=[txn.id], entry_ids=[entry.id], kind=MatchKind.PARTIAL,
-                    status=MatchStatus.REVIEW, confidence=round(confidence, 4),
+                    transaction_ids=[txn.id],
+                    entry_ids=[entry.id],
+                    kind=MatchKind.PARTIAL,
+                    status=MatchStatus.REVIEW,
+                    confidence=round(confidence, 4),
                     reasons=[
-                        f"final installment: settles the remaining {due:.2f}" if final
+                        f"final installment: settles the remaining {due:.2f}"
+                        if final
                         else f"partial payment: {paid:.2f} of {due:.2f} outstanding",
                         "document number quoted" if ref else "same counterparty",
                     ],
@@ -301,8 +324,7 @@ class ReconciliationEngine:
                 rest = [i for i in match.alternative_entry_ids if i != decision.entry_id]
                 match.alternative_entry_ids = [decision.entry_id, *rest]
                 match.reasons.append(
-                    f"second opinion prefers {entries[decision.entry_id].number}: "
-                    f"{decision.rationale}"
+                    f"second opinion prefers {entries[decision.entry_id].number}: {decision.rationale}"
                 )
 
     # Report ---------------------------------------------------------------
@@ -326,7 +348,8 @@ class ReconciliationEngine:
             unmatched_transaction_ids=unmatched_txns,
             unmatched_entry_ids=unmatched_entries,
             summary=ReconciliationSummary(
-                transactions=len(transactions), entries=len(entries),
+                transactions=len(transactions),
+                entries=len(entries),
                 auto_matched_transactions=counts[MatchStatus.AUTO],
                 review_transactions=counts[MatchStatus.REVIEW],
                 unmatched_transactions=len(unmatched_txns),

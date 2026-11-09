@@ -29,7 +29,9 @@ def _subset_sums(amounts: Sequence[int], offset: int) -> list[tuple[int, int]]:
 
 
 def find_subsets(
-    amounts: Sequence[Decimal], target: Decimal, tolerance: Decimal = Decimal("0.01"),
+    amounts: Sequence[Decimal],
+    target: Decimal,
+    tolerance: Decimal = Decimal("0.01"),
     min_size: int = 2,
 ) -> list[tuple[int, ...]]:
     """Index tuples whose amounts sum to `target` within `tolerance`.
@@ -64,7 +66,9 @@ def find_subsets(
 
 
 def brute_force_subsets(
-    amounts: Sequence[Decimal], target: Decimal, tolerance: Decimal = Decimal("0.01"),
+    amounts: Sequence[Decimal],
+    target: Decimal,
+    tolerance: Decimal = Decimal("0.01"),
     min_size: int = 2,
 ) -> set[tuple[int, ...]]:
     """Reference implementation used by the tests to check find_subsets."""

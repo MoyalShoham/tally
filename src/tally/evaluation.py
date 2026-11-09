@@ -63,8 +63,8 @@ class Metrics:
 def score_report(dataset: Dataset, report: ReconciliationReport, seconds: float = 0.0) -> Metrics:
     truth = {t.transaction_id: t for t in dataset.truth}
     stats: dict[str, ScenarioStats] = defaultdict(ScenarioStats)
-    for link in dataset.truth:
-        stats[link.scenario.value].total += 1
+    for truth_link in dataset.truth:
+        stats[truth_link.scenario.value].total += 1
 
     counts: Counter[str] = Counter()
     seen: set[str] = set()
@@ -87,20 +87,27 @@ def score_report(dataset: Dataset, report: ReconciliationReport, seconds: float 
                 bucket.review_correct += 1
             else:
                 bucket.wrong += 1
-                if (match.status is MatchStatus.REVIEW and len(link.entry_ids) == 1
-                        and link.entry_ids[0] in match.alternative_entry_ids[:2]):
+                if (
+                    match.status is MatchStatus.REVIEW
+                    and len(link.entry_ids) == 1
+                    and link.entry_ids[0] in match.alternative_entry_ids[:2]
+                ):
                     counts["review_in_top3"] += 1
-    for link in dataset.truth:
-        if link.transaction_id not in seen:
-            stats[link.scenario.value].missed += 1
+    for truth_link in dataset.truth:
+        if truth_link.transaction_id not in seen:
+            stats[truth_link.scenario.value].missed += 1
 
     return Metrics(
-        transactions=len(dataset.transactions), entries=len(dataset.entries),
+        transactions=len(dataset.transactions),
+        entries=len(dataset.entries),
         links=len(dataset.truth),
-        auto_matches=counts["auto_total"], auto_correct=counts["auto_correct"],
-        review_matches=counts["review_total"], review_correct=counts["review_correct"],
+        auto_matches=counts["auto_total"],
+        auto_correct=counts["auto_correct"],
+        review_matches=counts["review_total"],
+        review_correct=counts["review_correct"],
         review_in_top3=counts["review_in_top3"],
-        noise_matched=counts["noise_matched"], seconds=seconds,
+        noise_matched=counts["noise_matched"],
+        seconds=seconds,
         by_scenario=dict(sorted(stats.items())),
     )
 
@@ -108,8 +115,9 @@ def score_report(dataset: Dataset, report: ReconciliationReport, seconds: float 
 def run_benchmark(seed: int = 7, engine: ReconciliationEngine | None = None) -> Metrics:
     """Generate data, write it to files, parse it back and reconcile, end to end."""
     dataset = generate(seed=seed)
-    bank = parse_bank_file(bank_csv_hebrew(dataset.transactions), "statement.csv",
-                           load_profile("hebrew_debit_credit")).transactions
+    bank = parse_bank_file(
+        bank_csv_hebrew(dataset.transactions), "statement.csv", load_profile("hebrew_debit_credit")
+    ).transactions
     entries = parse_ledger_file(ledger_csv(dataset.entries), "open_items.csv")
     if [t.id for t in bank] != [t.id for t in dataset.transactions]:
         raise AssertionError("bank file round trip changed transaction ids")
@@ -126,8 +134,7 @@ def format_markdown(metrics: Metrics, seed: int) -> str:
         "",
         "| Metric | Value |",
         "| --- | --- |",
-        f"| Auto-match precision | {m.auto_precision:.1%} ({m.auto_correct:,} of "
-        f"{m.auto_matches:,}) |",
+        f"| Auto-match precision | {m.auto_precision:.1%} ({m.auto_correct:,} of {m.auto_matches:,}) |",
         f"| Auto-match recall | {m.auto_recall:.1%} of all true links |",
         f"| Found (auto + review) | {m.found_rate:.1%} of all true links |",
         f"| Review suggestions correct | {m.review_precision:.1%} ({m.review_correct:,} of "
@@ -139,8 +146,9 @@ def format_markdown(metrics: Metrics, seed: int) -> str:
         "| --- | ---: | ---: | ---: | ---: | ---: |",
     ]
     for name, s in m.by_scenario.items():
-        lines.append(f"| {name} | {s.total} | {s.auto_correct} | {s.review_correct} | "
-                     f"{s.wrong} | {s.missed} |")
+        lines.append(
+            f"| {name} | {s.total} | {s.auto_correct} | {s.review_correct} | {s.wrong} | {s.missed} |"
+        )
     return "\n".join(lines) + "\n"
 
 

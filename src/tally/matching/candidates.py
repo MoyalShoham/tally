@@ -39,7 +39,7 @@ class AmountIndex:
         amounts = self._amounts.get(kind, [])
         lo = bisect.bisect_left(amounts, low)
         hi = bisect.bisect_right(amounts, high)
-        return self._entries[kind][lo:hi]
+        return self._entries.get(kind, [])[lo:hi]
 
 
 def generate_candidates(

@@ -85,7 +85,8 @@ def assign(candidates: list[Candidate]) -> list[Assignment]:
             rivals += [c.pair.score for c in by_entry[chosen.entry_id] if c is not chosen]
             alternatives = sorted(
                 (c for c in by_txn[chosen.transaction_id] if c is not chosen),
-                key=lambda c: c.pair.score, reverse=True,
+                key=lambda c: c.pair.score,
+                reverse=True,
             )
             result.append(
                 Assignment(

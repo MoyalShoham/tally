@@ -35,9 +35,7 @@ class BankProfile(BaseModel):
     name: str
     description: str
     encodings: list[str] = Field(default_factory=lambda: ["utf-8-sig", "cp1255"])
-    date_formats: list[str] = Field(
-        default_factory=lambda: ["%d/%m/%Y", "%d/%m/%y", "%d.%m.%Y", "%Y-%m-%d"]
-    )
+    date_formats: list[str] = Field(default_factory=lambda: ["%d/%m/%Y", "%d/%m/%y", "%d.%m.%Y", "%Y-%m-%d"])
     columns: ColumnAliases
     header_search_rows: int = 30
 
