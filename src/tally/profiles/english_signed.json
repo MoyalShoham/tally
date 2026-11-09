@@ -1,0 +1,11 @@
+{
+  "name": "english_signed",
+  "description": "English headers with one signed Amount column (negative = money out).",
+  "columns": {
+    "date": ["date", "transaction date", "posting date"],
+    "description": ["description", "details", "narrative", "memo"],
+    "amount": ["amount", "amount (ils)", "signed amount"],
+    "reference": ["reference", "ref", "reference number"],
+    "balance": ["balance", "running balance"]
+  }
+}

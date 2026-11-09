@@ -1,0 +1,12 @@
+{
+  "name": "hebrew_debit_credit",
+  "description": "Hebrew headers with separate debit (חובה) and credit (זכות) columns, a layout common in Israeli bank statement exports.",
+  "columns": {
+    "date": ["תאריך", "תאריך פעולה", "תאריך העסקה"],
+    "description": ["תיאור", "הפעולה", "תיאור הפעולה", "פרטים"],
+    "debit": ["חובה", "בחובה", "חיוב"],
+    "credit": ["זכות", "בזכות", "זיכוי"],
+    "reference": ["אסמכתא", "אסמכתה", "מספר אסמכתא"],
+    "balance": ["יתרה", "יתרה בש\"ח", "יתרה בש״ח"]
+  }
+}
