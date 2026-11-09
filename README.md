@@ -1,5 +1,7 @@
 # Tally
 
+[![CI](https://github.com/MoyalShoham/tally/actions/workflows/ci.yml/badge.svg)](https://github.com/MoyalShoham/tally/actions/workflows/ci.yml)
+
 **Bank reconciliation engine for small businesses.** Tally reads a bank statement export and a list of open invoices and bills, and works out which payment settles which document. Confident matches are posted automatically; everything else goes to a review queue with the reasons and the alternatives.
 
 On held-out benchmark data (about 1,900 transactions per run) it auto-matches about 63% of payments at **99.4–100% precision**, finds about 82% overall, and runs in about a second.
