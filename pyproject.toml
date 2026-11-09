@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tally"
+version = "0.1.0"
+description = "Bank reconciliation engine: matches bank transactions to open invoices and bills."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Shoham Moyal", email = "moyal.shoham@gmail.com" }]
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2",
+    "openpyxl>=3.1",
+    "pydantic>=2.7",
+    "rapidfuzz>=3.9",
+    "scipy>=1.13",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.115", "python-multipart>=0.0.9", "uvicorn>=0.30"]
+llm = ["anthropic>=0.40"]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10", "httpx>=0.27", "pandas-stubs"]
+
+[project.scripts]
+tally = "tally.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tally"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # Hebrew text in strings and comments is intentional
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+mypy_path = "src"
