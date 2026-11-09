@@ -67,6 +67,8 @@ class Match(BaseModel):
     confidence: float = Field(ge=0, le=1)
     reasons: list[str] = Field(default_factory=list)
     amount_difference: Decimal = Decimal("0")
+    # Other plausible entries, best first, so a reviewer can switch with one click.
+    alternative_entry_ids: list[str] = Field(default_factory=list)
 
 
 class ReconciliationSummary(BaseModel):
