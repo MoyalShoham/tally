@@ -91,11 +91,12 @@ def name_similarity(description: str, counterparty: str) -> float:
     name = normalize_name(counterparty)
     if not desc or not name:
         return 0.0
-    shorter = min(len(desc), len(name))
-    score = fuzz.token_set_ratio(desc, name) / 100
-    if shorter >= 6:
-        # Truncated names show up as a strong partial match.
-        score = max(score, 0.95 * fuzz.partial_ratio(desc, name) / 100)
-        if name.startswith(desc) or desc.startswith(name):
-            score = max(score, 0.97)
+    if set(name.split()) <= set(desc.split()):
+        return 1.0  # every word of the name is present, maybe with extra words around it
+    # Word order varies between systems; compare sorted words.
+    score = fuzz.token_sort_ratio(desc, name) / 100
+    if 6 <= len(desc) < len(name):
+        # The bank cut the name after N characters: compare with the same-length prefix.
+        # (A plain substring search scores unrelated Hebrew names far too high.)
+        score = max(score, fuzz.ratio(desc, name[: len(desc)]) / 100)
     return round(score, 4)

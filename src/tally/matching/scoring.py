@@ -23,13 +23,13 @@ class ScoringConfig:
     reference_bonus: float = 0.25
     # Payers' banks often deduct a transfer fee, so an incoming payment can be a
     # little short. Allowed gap = max(absolute, relative * amount).
-    fee_tolerance_abs: Decimal = Decimal("30")
+    fee_tolerance_abs: Decimal = Decimal("20")
     fee_tolerance_rel: Decimal = Decimal("0.005")
     days_before_issue_allowed: int = 3
     grace_days_after_due: int = 7
     max_days_after_due: int = 120
     date_decay_days: float = 20.0
-    weak_name_threshold: float = 0.5
+    weak_name_threshold: float = 0.6
     weak_name_penalty: float = 0.6
     min_candidate_score: float = 0.40
     auto_threshold: float = 0.80
@@ -51,15 +51,20 @@ class PairScore:
     reasons: tuple[str, ...] = field(default_factory=tuple)
 
 
-def amount_fit(paid: Decimal, expected: Decimal, cfg: ScoringConfig) -> float | None:
+def amount_fit(
+    paid: Decimal, expected: Decimal, cfg: ScoringConfig, incoming: bool = True
+) -> float | None:
     """1.0 for an exact match, lower inside the fee tolerance, None outside it."""
     gap = paid - expected
     if abs(gap) <= Decimal("0.01"):
         return 1.0
     if abs(gap) > cfg.fee_tolerance(expected):
         return None
-    # Short by a fee is common; more than invoiced is unusual.
-    return 0.8 if gap < 0 else 0.6
+    if incoming and gap < 0:
+        return 0.8  # the payer's bank deducted a transfer fee: common
+    # Receiving more than invoiced, or paying a vendor a different amount than
+    # the bill, is unusual; keep it as a weak candidate only.
+    return 0.4
 
 
 def date_fit(txn: BankTransaction, entry: LedgerEntry, cfg: ScoringConfig) -> float | None:
@@ -83,7 +88,7 @@ def score_pair(txn: BankTransaction, entry: LedgerEntry, cfg: ScoringConfig) -> 
     if not direction_matches(txn, entry):
         return None
     paid = abs(txn.amount)
-    a = amount_fit(paid, entry.amount, cfg)
+    a = amount_fit(paid, entry.amount, cfg, incoming=txn.amount > 0)
     if a is None:
         return None
     d = date_fit(txn, entry, cfg)
@@ -100,7 +105,8 @@ def score_pair(txn: BankTransaction, entry: LedgerEntry, cfg: ScoringConfig) -> 
     elif n < cfg.weak_name_threshold:
         # Amount and date alone are a coincidence waiting to happen.
         score *= cfg.weak_name_penalty
-    score = min(score, 1.0)
+    # Not capped at 1.0: a quoted document number must still outrank an
+    # otherwise perfect twin. Confidence shown to users is capped separately.
 
     reasons = [
         "amount exact" if a == 1.0 else f"amount differs by {paid - entry.amount:+.2f}",
