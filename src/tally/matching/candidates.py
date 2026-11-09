@@ -3,8 +3,8 @@
 Scoring every transaction against every open entry is O(n*m) fuzzy comparisons.
 A real payment must agree on direction and (within the fee tolerance) on amount,
 so entries are indexed by amount and each transaction only looks at a narrow
-amount band. On the 2,000-transaction benchmark this cuts the pairs scored from
-about 3.6 million to a few thousand.
+amount band. On the benchmark (1,921 transactions, 1,859 entries) this cuts the
+pairs scored from 3.6 million to about 6,300.
 """
 
 from __future__ import annotations
